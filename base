@@ -1,0 +1,259 @@
+#0 => Create a bootable usb in linux using below command and in windows use rufus
+   dd if=archlinux-version-x86_64.iso of=/dev/sdb bs=4M
+
+#1 => Connect to Internet
+   rfkill unblock all
+   iwctl
+   device list
+   station wlan0 connect Niva25
+
+#2 => Ping some site on the Internet to verify connection
+   ping -c 3 archlinux.org
+
+#3 => Update system clock
+   timedatectl set-ntp true
+
+#4 => You can verify the status with 
+   timedatectl status
+
+#5 => Update your mirrorlist {OPTIONAL}
+   reflector --verbose --latest 200 --sort rate --save /etc/pacman.d/mirrorlist
+
+#6 => Install terminus-font and archlinux-keyring
+   pacman -Syy terminus-font archlinux-keyring
+
+#7 => setfont {OPTIONAL}
+   setfont ter-v24b
+
+#8 => Create partitions
+   #Create EFI Boot partition
+   fdisk -l #to find the designation for the SSD. (Most likely /dev/sda)
+   #If you do not see /dev/sda6 or /dev/sda7 or /dev/sda8 continue with this step or move on to the next one
+   fdisk /dev/sda
+    n #(to create a new partition)
+    1
+    enter
+    +1G
+    t
+    1 #(for EFI)
+    #Create /root partition
+    n
+    2
+    enter
+    +8G
+    w
+    t
+    19 #(for SWAP)
+    #Create /root partition
+    n
+    3
+    enter
+    enter
+    w
+
+#10 => Create the filesystems
+   mkfs.fat -F32 /dev/sda6
+   mkswap /dev/sda7
+   swapon /dev/sda7
+   mkfs.ext4 /dev/sd8
+
+#11 => Create the / and /boot directories
+    mount /dev/sda8 /mnt
+    mkdir /mnt/boot
+    mount /dev/sda6 /mnt/boot
+
+#12 => Install Arch linux base and vim packages
+    pacstrap -i /mnt base vim
+
+#13 => Generate the /etc/fstab file
+    genfstab -U -p /mnt >> /mnt/etc/fstab
+
+#14 => Copy systemd network configuration files
+    cp /etc/systemd/network/* /mnt/etc/systemd/network
+
+#15 => Change root to new system
+    arch-chroot /mnt
+
+#16 => Installing all the required packages
+    pacman -Sy linux-lts linux-firmware linux-lts-headers base-devel efibootmgr mtools dosfstools openssh iwd zsh \
+    ntfs-3g intel-ucode xf86-video-intel xf86-video-amdgpu git plasma xdg-desktop-portal ark unrar kdeconnect sshfs dolphin okular konsole kate gwenview \
+    networkmanager firefox deepin-icon-theme deepin-gtk-theme libappindicator-gtk3 appmenu-gtk-module \
+    vlc
+    
+#17 => Removing unwanted packages
+    pacman -Rnsc discover oxygen plasma-vault
+
+#18 => Use KDE file picker
+    export GTK_USE_PORTAL=1
+
+#19 => Set the timezone
+    ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
+
+#20 => Update the Hardware clock
+    hwclock --systohc
+
+#21 => Adjust system clock from real time clock
+    timedatectl set-local-rtc 1 --adjust-system-clock
+
+#22 => Set locale
+    sed -i 's/#en_US.UTF-8/en_US.UTF-8/g' /etc/locale.gen (uncomment en_US.UTF-8)
+    locale-gen
+    #Create locale.conf
+    vim /etc/locale.conf
+    # Add the below line with your locale info
+    LANG=en_US.UTF-8
+
+#23 => Set your hostname
+    vim /etc/hostname
+    # Add something like below line
+    ai
+
+#24 => Set your hosts
+    vim /etc/hosts
+    # Add the below lines by making required changes
+    127.0.0.1   localhost
+    ::1         localhost
+    127.0.1.1   ai.localdomain   ai
+
+#25 => Configure mkinitcpio
+    vim /etc/mkinitcpio.conf
+    # Update "HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)" to
+    HOOKS=(base udev autodetect modconf block filesystems keyboard resume fsck)
+
+#26 => generate initramfs  
+    mkinitcpio -p linux-lts
+
+#27 => => Create linux boot entry
+    vim /boot/loader/entries/arch.conf
+    # Add the below lines by making required changes
+    title ashniishna
+    linux /vmlinuz-linux-lts
+    initrd /intel-ucode.img
+    initrd /initramfs-linux-lts.img
+    options rw root=/dev/sda8 resume=/dev/sda7 pci=noaer quiet splash
+
+#28 => Enable boot menu item for windows 
+    lsblk
+    #   NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+    #   sda     259:0    0 953.9G  0 disk 
+    #   ...
+    #   sda     259:4    0 465.8G  0 disk 
+    #➜ ├─sda1 259:5    0   100M  0 part 
+    #   ├─sda2 259:6    0    16M  0 part 
+    #   ...
+    mount /dev/sda1 /mnt
+    cp -R /mnt/EFI/Boot /boot/EFI/
+    cp -R /mnt/EFI/Microsoft /boot/EFI/
+    umount /mnt
+
+#29 => configure bootloader
+    vim /boot/loader/loader.conf
+    # add below mentioned lines
+    timeout 10
+    default ashniishna    
+
+#30 => Set root password and create a user
+    passwd
+    useradd -m -g wheel ashni
+    passwd ashni
+
+#31 => EDITOR=vim visudo
+    # uncomment below line
+    %wheel ALL=(ALL) ALL
+
+#32 => Enable required services
+    systemctl enable systemd-networkd
+    systemctl enable systemd-resolved
+    systemctl enable systemd-timesyncd
+    systemctl enable NetworkManager
+    systemctl enable bluetooth
+    systemctl enable sddm
+
+#33 => Final Steps
+    exit
+    umount -a
+    reboot
+    login as ashni
+
+#34 => Installing powerlevel10k
+    paru -S ttf-meslo-nerd-font-powerlevel10k
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
+    Set ZSH_THEME="powerlevel10k/powerlevel10k" in ~/.zshrc
+    sudo vim /etc/pacman.conf      
+    #Add below lines
+    Color
+    IloveCandy
+
+#35 => Setup zsh
+    sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+    vim ~/.zshrc
+    #update plugins
+    plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+
+#36 => Setup paru (AUR Helper)
+    cd /opt
+    sudo git clone https://aur.archlinux.org/paru-git.git
+    sudo chown -R $USER ./paru-git
+    cd paru-git
+    makepkg -si
+
+#37 => Install required fonts
+    paru -S ttf-comic-mono-git freetype2 ttf-ms-fonts
+    sudo pacman -S freetype2 fontconfig cairo ttf-ubuntu-font-family noto-fonts noto-fonts-cjk ttf-dejavu ttf-liberation \
+    ttf-opensans ttf-cascadia-code
+    sudo ln -s /etc/fonts/conf.avail/70-no-bitmaps.conf /etc/fonts/conf.d
+    sudo ln -s /etc/fonts/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
+    sudo ln -s /etc/fonts/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
+    sudo vim /etc/profile.d/freetype2.sh
+    #Add/uncomment the following line to/in it, save and close 
+    export FREETYPE_PROPERTIES="truetype:interpreter-version=40"
+    #--------------------------------------------------------
+    mkdir -p ~/.config/fontconfig/conf.d/
+    vim ~/.config/fontconfig/conf.d/20-no-embedded.conf
+    #Add the following lines to it, save and close 
+    <?xml version="1.0"?>
+    <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+    <fontconfig>
+    <match target="font">
+        <edit name="embeddedbitmap" mode="assign">
+        <bool>false</bool>
+        </edit>
+    </match>
+    </fontconfig>
+    #------------------------------------------------------
+    reboot
+
+#38 => Setup touch pad
+    sudo pacman -S xdotool wmctrl
+    paru -S libinput-gestures
+    #libinput-gestures will detect touchpad gestures and run a command when any set gesture is detected. 
+    #xdotool will react to this by simulating keyboard events. To allow xdotool to work, the user you're using should be added to the input group:
+    sudo gpasswd -a $USER input
+    libinput-gestures-setup autostart
+    libinput-gestures-setup start
+
+#39 => Install latte-git
+    paru -S latte-dock-git
+    # goto autostart settings and replace Latte Dock command with the below command
+    latte-dock --replace
+
+#40 => Open KRunner using meta key
+    kwriteconfig5 --file kwinrc --group ModifierOnlyShortcuts --key Meta "org.kde.krunner,/App,,toggleDisplay"
+    reboot
+    
+#41 => Install kde-gtk-config kvantum-qt5
+    paru -S kde-gtk-config kvantum-qt5
+        
+#42 => Change OS Name
+    sudo vim /etc/os-release
+    #Update as follows
+    PRETTY_NAME="Ashniishna"
+    #----------------------------
+
+#43 => Change neofetch logo 
+    wget -O ~/ashniishna.txt https://raw.githubusercontent.com/NivashiniB/AI-OS/main/ashniishna.txt
+    vim ~/.zshrc
+    #Add the below given alias
+    alias neofetch="neofetch --source ~/ashniishna.txt --ascii_colors 3 --colors 4 2 3 2 4 4"
